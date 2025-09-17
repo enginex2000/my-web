@@ -71,7 +71,7 @@
     <button type="submit" name="show_all" value="1">ดูทั้งหมด</button>
   </form>
 
-  <table>
+  <!-- <table>
     <tr>
       <th>ID</th>
       <th>Created At</th>
@@ -90,7 +90,30 @@
       <td>{{ r['phone'] }}</td>
     </tr>
     {% endfor %}
+  </table> -->
+    <table>
+    <tr>
+      <th>ID</th>
+      <th>Created At</th>
+      <th>Date</th> <!-- เพิ่มคอลัมน์วันที่ -->
+      <th>Time</th>
+      <th>Court</th>
+      <th>Name</th>
+      <th>Phone</th>
+    </tr>
+    {% for r in reservations %}
+    <tr>
+      <td>{{ r['id'] }}</td>
+      <td>{{ r['created_at'] }}</td>
+      <td>{{ r['date'] }}</td> <!-- แสดงวันที่จอง -->
+      <td>{{ r['times'] }}</td>
+      <td>{{ r['courts'] }}</td>
+      <td>{{ r['name'] }}</td>
+      <td>{{ r['phone'] }}</td>
+    </tr>
+    {% endfor %}
   </table>
+
 </div>
 
 </body>
