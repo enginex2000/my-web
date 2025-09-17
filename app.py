@@ -20,6 +20,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS reservations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                date TEXT NOT NULL,
                 times TEXT NOT NULL,
                 courts TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -56,22 +57,21 @@ def set_maintenance(status: bool):
     conn.close()
 
 # ------------------------- User Booking -------------------------
-def is_time_taken(times, courts):
-    today = (datetime.utcnow() + timedelta(hours=7)).strftime("%Y-%m-%d")
+def is_time_taken(times, courts, booking_date):
     conn = get_db_connection()
     row = conn.execute(
-        "SELECT * FROM reservations WHERE times=? AND courts=? AND DATE(created_at)=?",
-        (times, courts, today)
+        "SELECT * FROM reservations WHERE times=? AND courts=? AND date=?",
+        (times, courts, booking_date)
     ).fetchone()
     conn.close()
     return row is not None
 
-def insert_reservation(times, courts, name, phone):
+def insert_reservation(times, courts, name, phone, booking_date):
     thai_now = datetime.utcnow() + timedelta(hours=7)
     conn = get_db_connection()
     conn.execute(
-        "INSERT INTO reservations (created_at, times, courts, name, phone) VALUES (?, ?, ?, ?, ?)",
-        (thai_now.strftime("%Y-%m-%d %H:%M:%S"), times, courts, name, phone)
+        "INSERT INTO reservations (created_at, date, times, courts, name, phone) VALUES (?, ?, ?, ?, ?, ?)",
+        (thai_now.strftime("%Y-%m-%d %H:%M:%S"), booking_date, times, courts, name, phone)
     )
     conn.commit()
     conn.close()
@@ -80,26 +80,28 @@ def insert_reservation(times, courts, name, phone):
 def index():
     today = (datetime.utcnow() + timedelta(hours=7)).strftime("%Y-%m-%d")
     conn = get_db_connection()
-    rows = conn.execute("SELECT times, courts FROM reservations WHERE DATE(created_at)=?", (today,)).fetchall()
+    rows = conn.execute("SELECT date, times, courts FROM reservations WHERE date>=? ORDER BY date ASC", (today,)).fetchall()
     conn.close()
 
     booked_dict = {}
     for r in rows:
-        court = r["courts"]  # ต้องตรงกับ <option value="C1"> หรือ "C2"
-        time = r["times"]    # ต้องตรงกับ <option value="10.00">...
-        if court not in booked_dict:
-            booked_dict[court] = []
-        booked_dict[court].append(time)
+        date = r["date"]
+        court = r["courts"]
+        time = r["times"]
+        if date not in booked_dict:
+            booked_dict[date] = {}
+        if court not in booked_dict[date]:
+            booked_dict[date][court] = []
+        booked_dict[date][court].append(time)
 
     maintenance_status = get_maintenance()
     return render_template("index.html",
                            booked_dict=booked_dict,
-                           maintenance=maintenance_status)
-
+                           maintenance=maintenance_status,
+                           today=today)
 
 @app.route('/process', methods=['POST'])
 def process():
-    # เช็คโหมดปรับปรุง
     if get_maintenance():
         flash("ระบบอยู่ระหว่างปรับปรุง ไม่สามารถจองได้ในขณะนี้", "error")
         return redirect(url_for('index'))
@@ -108,8 +110,9 @@ def process():
     times_label = request.form.get("times", "").strip()
     name = request.form.get("name", "").strip()
     phone = request.form.get("phone", "").strip()
+    booking_date = request.form.get("date", "").strip()
 
-    if not courts or not times_label or not name or not phone:
+    if not courts or not times_label or not name or not phone or not booking_date:
         flash("กรุณากรอกข้อมูลให้ครบทุกช่อง!", "error")
         return redirect(url_for('index'))
 
@@ -127,12 +130,12 @@ def process():
     }
     times_value = time_value_map.get(times_label, times_label)
 
-    if is_time_taken(times_value, courts):
-        flash(f"ช่วงเวลา {times_label} สนาม {courts} มีคนจองแล้ว", "error")
+    if is_time_taken(times_value, courts, booking_date):
+        flash(f"ช่วงเวลา {times_label} สนาม {courts} วัน {booking_date} มีคนจองแล้ว", "error")
         return redirect(url_for('index'))
 
-    insert_reservation(times_value, courts, name, phone)
-    flash(f"บันทึกเรียบร้อย! {courts} เวลา {times_label} ชื่อ {name} เบอร์ {phone}", "success")
+    insert_reservation(times_value, courts, name, phone, booking_date)
+    flash(f"บันทึกเรียบร้อย! {courts} เวลา {times_label} วันที่ {booking_date} ชื่อ {name} เบอร์ {phone}", "success")
     return redirect(url_for('index'))
 
 # ------------------------- Admin -------------------------
@@ -154,7 +157,7 @@ def admin_logout():
     flash("ออกจากระบบเรียบร้อย", "success")
     return redirect(url_for("admin_login"))
 
-@app.route("/admin", methods=["GET", "POST"])
+@app.route("/admin", methods=["GET","POST"])
 def admin_panel():
     if "admin" not in session:
         return redirect(url_for("admin_login"))
@@ -168,10 +171,10 @@ def admin_panel():
 
     conn = get_db_connection()
     if show_all:
-        reservations = conn.execute("SELECT * FROM reservations ORDER BY created_at DESC").fetchall()
+        reservations = conn.execute("SELECT * FROM reservations ORDER BY date ASC, times ASC").fetchall()
     else:
         reservations = conn.execute(
-            "SELECT * FROM reservations WHERE DATE(created_at)=? ORDER BY created_at DESC",
+            "SELECT * FROM reservations WHERE date=? ORDER BY times ASC",
             (selected_date,)
         ).fetchall()
     conn.close()
@@ -192,20 +195,10 @@ def reset_data():
 
     if password != ADMIN_PASS:
         flash("รหัสผ่านไม่ถูกต้อง!", "error")
-        conn = get_db_connection()
-        reservations = conn.execute(
-            "SELECT * FROM reservations WHERE DATE(created_at)=? ORDER BY created_at DESC",
-            (date,)
-        ).fetchall()
-        conn.close()
-        return render_template("admin_panel.html",
-                               reservations=reservations,
-                               selected_date=date,
-                               show_all=False,
-                               maintenance=get_maintenance())
+        return redirect(url_for("admin_panel"))
 
     conn = get_db_connection()
-    conn.execute("DELETE FROM reservations WHERE DATE(created_at)=?", (date,))
+    conn.execute("DELETE FROM reservations WHERE date=?", (date,))
     conn.commit()
     conn.close()
     flash(f"รีเซ็ตข้อมูลวันที่ {date} สำเร็จ!", "success")
@@ -217,15 +210,15 @@ def export_excel():
         return redirect(url_for("admin_login"))
 
     conn = get_db_connection()
-    reservations = conn.execute("SELECT * FROM reservations ORDER BY created_at DESC").fetchall()
+    reservations = conn.execute("SELECT * FROM reservations ORDER BY date ASC, times ASC").fetchall()
     conn.close()
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Reservations"
-    ws.append(["ID","Created At","Time","Court","Name","Phone"])
+    ws.append(["ID","Created At","Date","Time","Court","Name","Phone"])
     for r in reservations:
-        ws.append([r["id"], r["created_at"], r["times"], r["courts"], r["name"], r["phone"]])
+        ws.append([r["id"], r["created_at"], r["date"], r["times"], r["courts"], r["name"], r["phone"]])
 
     output = BytesIO()
     wb.save(output)
