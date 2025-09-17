@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <title>Esplanade Sport Club</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+  <!-- SweetAlert2 CSS & JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- JS แยก -->
+  <script>
+    const bookedDict = {{ booked_dict|tojson }};
+    const maintenanceStatus = {{ 'true' if maintenance else 'false' }};
+  </script>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</head>
+<body>
+
+<div class="container user-container">
+  <h1>Esplanade Sport Club</h1>
+  <h2>ใส่ข้อมูลของคุณ</h2>
+
+  <form method="post" action="/process">
+    <label>Courts</label>
+    <select id="courts" name="courts">
+      <option value="C1">Badminton C1</option>
+      <option value="C2">Table Tennis C2</option>
+    </select>
+
+    <p>Times
+      <select id="times" name="times">
+        <option value="10.00" data-label="10.00-12.00">10.00-12.00</option>
+        <option value="12.00" data-label="12.00-14.00">12.00-14.00</option>
+        <option value="14.00" data-label="14.00-16.00">14.00-16.00</option>
+        <option value="16.00" data-label="16.00-18.00">16.00-18.00</option>
+        <option value="18.00" data-label="18.00-20.00">18.00-20.00</option>
+        <option value="20.00" data-label="20.00-22.00">20.00-22.00</option>
+      </select>
+    </p>
+
+    <p>Name
+      <input type="text" name="name" placeholder="ใส่ชื่อของคุณ...">
+    </p>
+
+    <p>Phone
+      <input type="text" name="phone" placeholder="หมายเลขโทรศัพท์..." 
+             pattern="[0-9]{10}" maxlength="10" 
+             title="กรุณากรอกหมายเลขโทรศัพท์ 10 หลัก">
+    </p>
+
+    <button type="submit">ส่ง</button>
+  </form>
+</div>
+
+<script>
+  // โหลดและอัปเดตเวลาที่ถูกจองและโหมดปรับปรุง
+  window.onload = function() {
+      updateTimes(bookedDict, maintenanceStatus);
+  };
+
+  document.getElementById("courts").addEventListener("change", function() {
+      updateTimes(bookedDict, maintenanceStatus);
+  });
+
+  // Flash messages
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        showReply("{{ message }}", "{{ 'success' if category=='success' else 'error' }}");
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+</script>
+
+</body>
+</html>
